@@ -6,7 +6,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/mediocregopher/radix.v2/pool"
 	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/log"
 	"github.com/uber/jaeger-client-go"
 	"github.com/uber/jaeger-client-go/config"
 	"io"
@@ -16,13 +15,18 @@ import (
 
 var db *pool.Pool
 
+var (
+	RedisUrl = "http://localhost:6379"
+)
+
 func init() {
 	var err error
 	// Establish a pool of 10 connections to the Redis server listening on
 	// port 6379 of the variable that has been used
-	redisUrl := os.Getenv("REDIS_URL") + ":6379"
-	fmt.Println(redisUrl)
-	db, err = pool.New("tcp", redisUrl, 10)
+	if os.Getenv("REDIS_URL") != "" {
+		RedisUrl = os.Getenv("REDIS_URL")
+	}
+	db, err = pool.New("tcp", RedisUrl, 10)
 	if err != nil {
 	}
 }
@@ -38,23 +42,21 @@ func main() {
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
 
-	helloTo := "Redis"
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3230"
+	}
 
-	span := tracer.StartSpan("say-hello")
-	span.SetTag("hello-to", helloTo)
+	span := tracer.StartSpan("StartingKeyValueServer")
+	span.SetTag("event", "Starting MUX")
 	defer span.Finish()
 
 	ctx := context.Background()
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
-	helloStr := formatString(ctx, helloTo)
-	printHello(ctx, helloStr)
+	logValue := fmt.Sprintf("Starting server on port %s with redis %s", port, RedisUrl)
+	printServerInfo(ctx, logValue)
 	span.Finish()
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "3230"
-	}
 
 	r := mux.NewRouter()
 	r.HandleFunc("/api/v1/redis/{user}/{playList}",  searchHandler)
@@ -81,24 +83,13 @@ func initJaeger(service string) (opentracing.Tracer, io.Closer) {
 	return tracer, closer
 }
 
-func formatString(ctx context.Context, helloTo string) string {
-	span, _ := opentracing.StartSpanFromContext(ctx, "formatString")
-	defer span.Finish()
-	helloStr := fmt.Sprintf("Hello, %s!", helloTo)
-	span.LogFields(
-		log.String("event", "string-format"),
-		log.String("value", helloStr),
-	)
 
-	return helloStr
-}
 
-func printHello(ctx context.Context, helloStr string){
-	span, _ := opentracing.StartSpanFromContext(ctx, "formatString")
+func printServerInfo(ctx context.Context, serverInfo string){
+	span, _ := opentracing.StartSpanFromContext(ctx, "ServerInfo")
 	defer span.Finish()
 
-	println(helloStr)
-	span.LogKV("event", "println")
+	span.LogKV("event", serverInfo)
 }
 
 
