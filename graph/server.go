@@ -391,9 +391,9 @@ func main() {
 
 
 	serveMux := http.NewServeMux()
-	serveMux.HandleFunc("/search", searchHandler)
-	serveMux.HandleFunc("/movie/", movieHandler)
-	serveMux.HandleFunc("/graph", graphHandler)
+	serveMux.HandleFunc("api/search", searchHandler)
+	serveMux.HandleFunc("api/movie/", movieHandler)
+	serveMux.HandleFunc("api/graph", graphHandler)
 
 	panic(http.ListenAndServe(":"+port, serveMux))
 
