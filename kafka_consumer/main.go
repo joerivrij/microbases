@@ -46,6 +46,7 @@ func main() {
 				fmt.Println(err)
 			case msg := <-consumer.Messages():
 				*messageCountStart++
+				printSomething()
 				fmt.Println("Received messages", string(msg.Key), string(msg.Value))
 			case <-signals:
 				fmt.Println("Interrupt is detected")
@@ -55,6 +56,10 @@ func main() {
 	}()
 	<-doneCh
 	fmt.Println("Processed", *messageCountStart, "messages")
+}
+
+func printSomething() {
+	fmt.Print("I have been here!!")
 }
 /*
 import (

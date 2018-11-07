@@ -5,16 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
+	"github.com/joerivrij/microbases/shared/tracing"
 	"github.com/mediocregopher/radix.v2/pool"
 	"github.com/opentracing/opentracing-go"
-	"github.com/uber/jaeger-client-go"
-	"github.com/uber/jaeger-client-go/config"
-	"io"
+	"github.com/opentracing/opentracing-go/ext"
+	openlog "github.com/opentracing/opentracing-go/log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	openlog "github.com/opentracing/opentracing-go/log"
 )
 
 var db *pool.Pool
@@ -23,8 +22,12 @@ var (
 	RedisUrl = "localhost:6379"
 )
 
+type PostBody struct {
+	Words  string `json:"words"`
+}
+
 func main() {
-	tracer, closer := initJaeger("KeyValueBackendApi")
+	tracer, closer := tracing.Init("KeyValueBackendApi")
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
 
@@ -47,15 +50,15 @@ func main() {
 	startRedis()
 
 	r := mux.NewRouter()
-	r.HandleFunc("/api/v1/keyvalue/{book}/{canto}",  searchHandler)
-	r.HandleFunc("/api/v1/keyvalue/{book}/{canto}",  postHandler).Methods("POST")
+	r.HandleFunc("/api/v1/keyvalue/{book}/{canto}/{verse}", searchHandler).Methods("GET")
+	r.HandleFunc("/api/v1/keyvalue/{book}/{canto}/{verse}", postHandler).Methods("POST")
 
 	panic(http.ListenAndServe(":"+port, r))
 }
 
 func startRedis() {
 	var err error
-	// Establish a pool of 10 connections to the Redis server listening on
+	// Establish a pool of 15 connections to the Redis server listening on
 	// port 6379 of the variable that has been used
 	if os.Getenv("REDIS_URL") != "" {
 		RedisUrl = os.Getenv("REDIS_URL")
@@ -66,50 +69,68 @@ func startRedis() {
 }
 
 func searchHandler(w http.ResponseWriter, req *http.Request) {
-	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("postHandler")
-	span.SetTag("Method", "postHandler")
+	vars := mux.Vars(req)
+	book := vars["book"]
+	canto := vars["canto"]
+	verse := vars["verse"]
+
+	spanCtx, _ := opentracing.GlobalTracer().Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
+	span := opentracing.GlobalTracer().StartSpan("searchHandler", ext.RPCServerOption(spanCtx))
+	defer span.Finish()
+
+	ctx := context.Background()
+	ctx = opentracing.ContextWithSpan(ctx, span)
+
 	span.LogFields(
 		openlog.String("method", req.Method),
 		openlog.String("path", req.URL.Path),
 		openlog.String("host", req.Host),
 	)
 
-	ctx := context.Background()
-	ctx = opentracing.ContextWithSpan(ctx, span)
-
-	key := "inferno:cantoi"
-	testSting := "this is a test string with words words words words word s"
-	words := strings.Fields(testSting)
-	delWordCount(key, ctx)
-	for _, word := range words{
-		incrWordCount(key, word, ctx)
-	}
+	key := book + ":" + canto + ":" + verse
 
 	c := getWordCount(key, ctx)
 	respondWithJson(w, 200, c, ctx)
 }
 
 func postHandler(w http.ResponseWriter, req *http.Request) {
-	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("postHandler")
-	span.SetTag("Method", "postHandler")
-	span.LogFields(
-		openlog.String("method", req.Method),
-		openlog.String("path", req.URL.Path),
-		openlog.String("host", req.Host),
-	)
+	vars := mux.Vars(req)
+	book := vars["book"]
+	canto := vars["canto"]
+	verse := vars["verse"]
+
+	var m PostBody
+
+	decoder := json.NewDecoder(req.Body)
+	if err := decoder.Decode(&m); err != nil {
+		respondWithJson(w, http.StatusBadRequest, req.Body, context.Background())
+		return
+	}
+
+	spanCtx, _ := opentracing.GlobalTracer().Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
+	span := opentracing.GlobalTracer().StartSpan("postHandler", ext.RPCServerOption(spanCtx))
+	defer span.Finish()
 
 	ctx := context.Background()
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
-	key := "inferno:cantoi"
-	testSting := "this is a test string with words words words words word s"
-	words := strings.Fields(testSting)
+	jsonBody, _ := json.Marshal(m)
+	span.LogFields(
+		openlog.String("method", req.Method),
+		openlog.String("path", req.URL.Path),
+		openlog.String("host", req.Host),
+		openlog.String("body", string(jsonBody)),
+	)
+
+	key := book + ":" + canto + ":" + verse
+	words := strings.Fields(m.Words)
 	delWordCount(key, ctx)
 	for _, word := range words{
 		incrWordCount(key, word, ctx)
 	}
+
+	w.WriteHeader(201)
+	respondWithJson(w, 201, "Created", ctx)
 }
 
 
@@ -147,8 +168,8 @@ func incrWordCount(key string, word string, ctx context.Context) {
 }
 
 func getWordCount(key string, ctx context.Context) (map[string] string) {
-	span, _ := opentracing.StartSpanFromContext(ctx, "incrWordCount")
-	span.SetTag("Method", "incrWordCount")
+	span, _ := opentracing.StartSpanFromContext(ctx, "GetWordCount")
+	span.SetTag("Method", "GetWordCount")
 
 	defer span.Finish()
 
@@ -162,24 +183,6 @@ func getWordCount(key string, ctx context.Context) (map[string] string) {
 		openlog.String("body", "Increased by 1"),
 	)
 	return result
-}
-
-// initJaeger returns an instance of Jaeger Tracer that samples 100% of traces and logs all spans to stdout.
-func initJaeger(service string) (opentracing.Tracer, io.Closer) {
-	cfg := &config.Configuration{
-		Sampler: &config.SamplerConfig{
-			Type:  "const",
-			Param: 1,
-		},
-		Reporter: &config.ReporterConfig{
-			LogSpans: true,
-		},
-	}
-	tracer, closer, err := cfg.New(service, config.Logger(jaeger.StdLogger))
-	if err != nil {
-		panic(fmt.Sprintf("ERROR: cannot init Jaeger: %v\n", err))
-	}
-	return tracer, closer
 }
 
 func printServerInfo(ctx context.Context, serverInfo string){
