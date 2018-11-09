@@ -5,17 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
-	"github.com/joerivrij/microbases/document/models"
+	"github.com/joerivrij/microbases/shared/models"
+	"github.com/joerivrij/microbases/shared/response"
+	"github.com/joerivrij/microbases/shared/tracing"
 	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
 	openlog "github.com/opentracing/opentracing-go/log"
-	"github.com/uber/jaeger-client-go"
-	"github.com/uber/jaeger-client-go/config"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
-	"io"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 )
 
 
@@ -37,7 +38,7 @@ func Connect() {
 
 func main() {
 	Connect()
-	tracer, closer := initJaeger("DocumentBackendApi")
+	tracer, closer := tracing.Init("DocumentBackendApi")
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
 
@@ -54,43 +55,111 @@ func main() {
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	logValue := fmt.Sprintf("Starting server on port %s with mongodb %s", port, db)
-	printServerInfo(ctx, logValue)
+	tracing.PrintServerInfo(ctx, logValue)
 	span.Finish()
 
 	r := mux.NewRouter()
-	r.HandleFunc("/api/canti", allCantiHandler).Methods("GET")
+	r.HandleFunc("/api/{book}/canti", allCantiHandler).Methods("GET")
+	r.HandleFunc("/api/{book}/{canto}", specificCantoHandler).Methods("GET")
+	r.HandleFunc("/api/{book}/{canto}/{verse}", specificCantoWithVerseHandler).Methods("GET")
 
 	panic(http.ListenAndServe(":"+port, r))
 }
 
-func allCantiHandler(w http.ResponseWriter, req *http.Request) {
-	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("allCantiHandler")
-	span.SetTag("Method", "allCantiHandler")
+func specificCantoHandler(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	book := strings.Title(vars["book"])
+	canto := vars["canto"]
+
+	spanCtx, _ := opentracing.GlobalTracer().Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
+	span := opentracing.GlobalTracer().StartSpan("postHandler", ext.RPCServerOption(spanCtx))
+	defer span.Finish()
+
+	ctx := context.Background()
+	ctx = opentracing.ContextWithSpan(ctx, span)
+
 	span.LogFields(
 		openlog.String("method", req.Method),
 		openlog.String("path", req.URL.Path),
 		openlog.String("host", req.Host),
 	)
-	ctx := context.Background()
-	ctx = opentracing.ContextWithSpan(ctx, span)
+	arabic, err := strconv.Atoi(canto)
+	if err != nil {
+		fmt.Println(err)
+	}
+	query := bson.M{"book": book, "arabic": arabic}
+
+	result := findAllWithQuery(ctx, query)
+
+	response.RespondWithJson(w, http.StatusOK, result, ctx)
+}
+
+func specificCantoWithVerseHandler(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	book := strings.Title(vars["book"])
+	canto := vars["canto"]
+	verse := vars["verse"]
+
+	spanCtx, _ := opentracing.GlobalTracer().Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
+	span := opentracing.GlobalTracer().StartSpan("postHandler", ext.RPCServerOption(spanCtx))
 	defer span.Finish()
 
-	canti, err := findAll(ctx)
+	ctx := context.Background()
+	ctx = opentracing.ContextWithSpan(ctx, span)
+
+	span.LogFields(
+		openlog.String("method", req.Method),
+		openlog.String("path", req.URL.Path),
+		openlog.String("host", req.Host),
+	)
+
+	arabic, err := strconv.Atoi(canto)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	verseBson, err := strconv.Atoi(verse)
+	if err != nil {
+		fmt.Println(err)
+	}
+	query := bson.M{"book": book, "arabic": arabic, "verse": verseBson}
+	result := findOneWithQuery(ctx, query)
+
+	response.RespondWithJson(w, http.StatusOK, result, ctx)
+}
+
+func allCantiHandler(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	book := strings.Title(vars["book"])
+
+	spanCtx, _ := opentracing.GlobalTracer().Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
+	span := opentracing.GlobalTracer().StartSpan("postHandler", ext.RPCServerOption(spanCtx))
+	defer span.Finish()
+
+	ctx := context.Background()
+	ctx = opentracing.ContextWithSpan(ctx, span)
+
+	span.LogFields(
+		openlog.String("method", req.Method),
+		openlog.String("path", req.URL.Path),
+		openlog.String("host", req.Host),
+	)
+
+	canti, err := findAll(ctx, book)
 	if err != nil {
 		//respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondWithJson(w, http.StatusOK, canti, ctx)
+	response.RespondWithJson(w, http.StatusOK, canti, ctx)
 
 	}
 
-func findAll(ctx context.Context) ([]models.Canto, error) {
+func findAll(ctx context.Context, book string) ([]models.Canto, error) {
 	span, _ := opentracing.StartSpanFromContext(ctx, "findAll")
 	defer span.Finish()
 	var canti []models.Canto
 
-	err := db.C(COLLECTION).Find(bson.M{}).All(&canti)
+	err := db.C(COLLECTION).Find(bson.M{"book": book}).All(&canti)
 	if err != nil {
 		span.LogFields(
 			openlog.String("mongoresult", "error getting canti"),
@@ -105,45 +174,42 @@ func findAll(ctx context.Context) ([]models.Canto, error) {
 	return canti, err
 }
 
-// initJaeger returns an instance of Jaeger Tracer that samples 100% of traces and logs all spans to stdout.
-func initJaeger(service string) (opentracing.Tracer, io.Closer) {
-	cfg := &config.Configuration{
-		Sampler: &config.SamplerConfig{
-			Type:  "const",
-			Param: 1,
-		},
-		Reporter: &config.ReporterConfig{
-			LogSpans: true,
-		},
-	}
-	tracer, closer, err := cfg.New(service, config.Logger(jaeger.StdLogger))
+func findAllWithQuery(ctx context.Context, query bson.M) ([]models.Canto) {
+	span, _ := opentracing.StartSpanFromContext(ctx, "findWithQuery")
+	defer span.Finish()
+	var canti []models.Canto
+
+	err := db.C(COLLECTION).Find(query).All(&canti)
 	if err != nil {
-		panic(fmt.Sprintf("ERROR: cannot init Jaeger: %v\n", err))
+		span.LogFields(
+			openlog.String("mongoresult", "error getting canti"),
+		)
 	}
-	return tracer, closer
-}
 
-
-// startup log with server info
-func printServerInfo(ctx context.Context, serverInfo string){
-	span, _ := opentracing.StartSpanFromContext(ctx, "ServerInfo")
-	defer span.Finish()
-
-	span.LogKV("event", serverInfo)
-}
-
-//generic method to respondwith json and log to jaeger
-func respondWithJson(w http.ResponseWriter, code int, payload interface{}, ctx context.Context) {
-	span, _ := opentracing.StartSpanFromContext(ctx, "Response")
-	span.SetTag("Method", "ShowHighScores")
-
-	response, _ := json.Marshal(payload)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	w.Write(response)
+	response, _ := json.Marshal(canti)
 	span.LogFields(
-		openlog.String("http_status_code", strconv.Itoa(code)),
-		openlog.String("body", string(response)),
+		openlog.String("mongoresult", string(response)),
 	)
+
+	return canti
+}
+
+func findOneWithQuery(ctx context.Context, query bson.M) (models.Canto) {
+	span, _ := opentracing.StartSpanFromContext(ctx, "findWithQuery")
 	defer span.Finish()
+	var canto models.Canto
+
+	err := db.C(COLLECTION).Find(query).One(&canto)
+	if err != nil {
+		span.LogFields(
+			openlog.String("mongoresult", "error getting canti"),
+		)
+	}
+
+	response, _ := json.Marshal(canto)
+	span.LogFields(
+		openlog.String("mongoresult", string(response)),
+	)
+
+	return canto
 }
