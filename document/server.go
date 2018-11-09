@@ -8,11 +8,13 @@ import (
 	"github.com/joerivrij/microbases/shared/models"
 	"github.com/joerivrij/microbases/shared/response"
 	"github.com/joerivrij/microbases/shared/tracing"
+	"github.com/joho/godotenv"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	openlog "github.com/opentracing/opentracing-go/log"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -24,12 +26,11 @@ var db *mgo.Database
 
 const (
 	COLLECTION = "canti"
-	SERVER = "localhost:27017"
 	DATABASE = "divinacommedia"
 )
 
-func Connect() {
-	session, err := mgo.Dial(SERVER)
+func Connect(mongoUrl string) {
+	session, err := mgo.Dial(mongoUrl)
 	if err != nil {
 		println(err)
 	}
@@ -37,7 +38,17 @@ func Connect() {
 }
 
 func main() {
-	Connect()
+	// godotenv.Load("filenumberone.env", "filenumbertwo.env")
+	systemEnv := os.Getenv("GOENV")
+
+	err := godotenv.Load(".env." + systemEnv)
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	mongoUrl := os.Getenv("MONGO_URL")
+
+	Connect(mongoUrl)
 	tracer, closer := tracing.Init("DocumentBackendApi")
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
@@ -59,7 +70,7 @@ func main() {
 	span.Finish()
 
 	r := mux.NewRouter()
-	r.HandleFunc("/api/{book}/canti", allCantiHandler).Methods("GET")
+	r.HandleFunc("/api/{book}", allCantiHandler).Methods("GET")
 	r.HandleFunc("/api/{book}/{canto}", specificCantoHandler).Methods("GET")
 	r.HandleFunc("/api/{book}/{canto}/{verse}", specificCantoWithVerseHandler).Methods("GET")
 
