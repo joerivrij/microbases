@@ -3,15 +3,20 @@ package tracing
 import (
 	"context"
 	"fmt"
+	"github.com/opentracing/opentracing-go"
+	"github.com/uber/jaeger-client-go"
+	"github.com/uber/jaeger-client-go/config"
 	"io"
-
-	opentracing "github.com/opentracing/opentracing-go"
-	jaeger "github.com/uber/jaeger-client-go"
-	config "github.com/uber/jaeger-client-go/config"
 )
 
 // Init returns an instance of Jaeger Tracer that samples 100% of traces and logs all spans to stdout.
 func Init(service string) (opentracing.Tracer, io.Closer) {
+//	cfg, err := config.FromEnv()
+//	if err != nil {
+//		// parsing errors might happen here, such as when we get a string where we expect a number
+//		log.Printf("Could not parse Jaeger env vars: %s", err.Error())
+//	}
+
 	cfg := &config.Configuration{
 		Sampler: &config.SamplerConfig{
 			Type:  "const",
@@ -21,6 +26,7 @@ func Init(service string) (opentracing.Tracer, io.Closer) {
 			LogSpans: true,
 		},
 	}
+
 	tracer, closer, err := cfg.New(service, config.Logger(jaeger.StdLogger))
 	if err != nil {
 		panic(fmt.Sprintf("ERROR: cannot init Jaeger: %v\n", err))

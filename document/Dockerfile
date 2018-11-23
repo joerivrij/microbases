@@ -12,6 +12,7 @@ RUN go build -o documentserver .
 FROM alpine
 RUN apk update && apk add git && apk add ca-certificates
 COPY --from=builder /go/src/app/documentserver /
+COPY --from=builder /go/src/app/.env.docker /
 CMD ["/documentserver"]
 
 

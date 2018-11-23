@@ -89,6 +89,11 @@ func searchHandler(w http.ResponseWriter, req *http.Request) {
 
 	key := book + ":" + canto + ":" + verse
 
+	exists := keyExists(key, ctx)
+	if !exists{
+		respondWithJson(w, 503, "not done yet", ctx)
+	}
+
 	c := getWordCount(key, ctx)
 	respondWithJson(w, 200, c, ctx)
 }
@@ -133,6 +138,24 @@ func postHandler(w http.ResponseWriter, req *http.Request) {
 	respondWithJson(w, 201, "Created", ctx)
 }
 
+func keyExists(key string, ctx context.Context) (bool) {
+	span, _ := opentracing.StartSpanFromContext(ctx, "keyExists")
+	span.SetTag("Method", "keyExists")
+
+	defer span.Finish()
+
+	res, err := db.Cmd("EXISTS", key).Int()
+	if err != nil {
+		println(err)
+	}
+	exists := res != 0
+
+	return exists
+}
+
+func getWordCountFromMongo(key string, ctx context.Context) {
+
+}
 
 func delWordCount(key string, ctx context.Context) {
 	span, _ := opentracing.StartSpanFromContext(ctx, "delWordCount")

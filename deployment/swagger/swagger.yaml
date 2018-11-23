@@ -1,0 +1,69 @@
+---
+openapi: 3.0.0
+info:
+  description: "Swagger documentation for Microbases project (MICROservice + dataBASES)"
+  version: "1.0.0"
+  title: "Swagbases"
+  termsOfService: "http://swagger.io/terms/"
+  contact:
+    email: "1337@h4x0r.nl"
+  license:
+    name: "MIT"
+    url: "https://opensource.org/licenses/MIT"
+servers:
+  - url: http://{environment}/
+    variables:
+      environment:
+        default: documentbase # Production server
+        enum:
+          - documentbase:3200
+          - graphbase:3200
+          - keyvaluebase:3200
+          - relationalbase:3200
+          - proxy:80
+tags:
+- name: "general"
+- name: "documentbase"
+  description: "MongoDB microservice work storing documents"
+paths:
+  /ping/: # currently not working due to CORS
+    get:
+      tags:
+      - "general"
+      produces:
+      - "application/json"
+      summary: "Ping the service, currently not working due to CORS"
+      responses:
+        200:
+          description: "successful operation"
+
+components:
+  #-------------------------------
+  # Reusable responses
+  #-------------------------------
+  responses:
+    UnauthorizedError:
+      description: "Token is missing"
+      examples:
+          UNAUTHORIZED: {"detail": "Authenticatiegegevens zijn niet opgegeven.", "status_code": 401}
+
+  #-------------------------------
+  # Models
+  #-------------------------------
+  schemas:
+    Baseobject:
+      type: object
+      properties:
+        id:
+          type: "string"
+        naam:
+          type: "string"
+  #-------------------------------
+  # Authorization button
+  #-------------------------------
+  securitySchemes:
+    TokenAuth:        # arbitrary name for the security scheme
+      type: "JWT"
+      in: "header"       # can be "header", "query" or "cookie"
+      name: "Authorization"  # name of the header, query parameter or cookie
+
