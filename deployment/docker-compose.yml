@@ -9,9 +9,10 @@ services:
     build: ../document/
     environment:
       - GOENV=docker
+      - JAEGER_AGENT_HOST=jaeger-agent
+      - JAEGER_AGENT_PORT=5775
     ports:
     - 3210:3210
-
 
 ###################################
 ############ DATABASES ############
