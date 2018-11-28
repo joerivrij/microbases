@@ -40,6 +40,7 @@ func Connect(mongoUrl string) {
 func main() {
 	// godotenv.Load("filenumberone.env", "filenumbertwo.env")
 	systemEnv := os.Getenv("GOENV")
+	println(systemEnv)
 
 	err := godotenv.Load(".env." + systemEnv)
 	if err != nil {
@@ -47,9 +48,14 @@ func main() {
 	}
 
 	mongoUrl := os.Getenv("MONGO_URL")
+	println(mongoUrl)
 
 	Connect(mongoUrl)
-	tracer, closer := tracing.Init("DocumentBackendApi")
+
+	jaegerUrl := os.Getenv("JAEGER_HOST")
+	println(jaegerUrl)
+
+	tracer, closer := tracing.Init("DocumentBackendApi", jaegerUrl)
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
 

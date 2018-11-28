@@ -10,19 +10,19 @@ import (
 )
 
 // Init returns an instance of Jaeger Tracer that samples 100% of traces and logs all spans to stdout.
-func Init(service string) (opentracing.Tracer, io.Closer) {
+func Init(service string, host string) (opentracing.Tracer, io.Closer) {
 //	cfg, err := config.FromEnv()
 //	if err != nil {
 //		// parsing errors might happen here, such as when we get a string where we expect a number
 //		log.Printf("Could not parse Jaeger env vars: %s", err.Error())
 //	}
-
 	cfg := &config.Configuration{
 		Sampler: &config.SamplerConfig{
 			Type:  "const",
 			Param: 1,
 		},
 		Reporter: &config.ReporterConfig{
+			LocalAgentHostPort: host,
 			LogSpans: true,
 		},
 	}
