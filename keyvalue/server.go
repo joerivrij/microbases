@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/gorilla/mux"
 	"github.com/joerivrij/microbases/shared/tracing"
+	"github.com/joho/godotenv"
 	"github.com/mediocregopher/radix.v2/pool"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
@@ -14,13 +15,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"log"
 )
 
 var db *pool.Pool
-
-var (
-	RedisUrl = "localhost:6379"
-)
 
 type PostBody struct {
 	Words  string `json:"words"`
@@ -31,6 +29,15 @@ func main() {
 	jaegerPort :=  os.Getenv("JAEGER_AGENT_PORT")
 	jaegerConfig := jaegerUrl + ":" + jaegerPort
 	println(jaegerConfig)
+
+	systemEnv := os.Getenv("GOENV")
+	err := godotenv.Load(".env." + systemEnv)
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	RedisUrl := os.Getenv("REDIS_URL")
+	println(RedisUrl)
 
 	tracer, closer := tracing.Init("KeyValueBackendApi", jaegerConfig)
 	defer closer.Close()

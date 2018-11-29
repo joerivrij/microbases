@@ -14,7 +14,7 @@ services:
     ports:
     - 3210:3210
 
-  keyvalue:
+  keyvaluebase:
     build: ../keyvalue/
     environment:
     - GOENV=docker
@@ -32,7 +32,7 @@ services:
     ports:
     - 3201:3201
 
-  oauth:
+  oauthbase:
     build: ../oauthserver/
     environment:
     - GOENV=docker
@@ -40,6 +40,15 @@ services:
     - JAEGER_AGENT_PORT=6831
     ports:
     - 3240:3240
+
+  graphbase:
+    build: ../graph/
+    environment:
+    - GOENV=docker
+    - JAEGER_AGENT_HOST=jaeger-agent
+    - JAEGER_AGENT_PORT=6831
+    ports:
+    - 3220:3220
 
 ###################################
 ############ DATABASES ############

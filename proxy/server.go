@@ -6,46 +6,32 @@ import (
 	microclient "github.com/joerivrij/microbases/shared/client"
 	"github.com/joerivrij/microbases/shared/response"
 	"github.com/joerivrij/microbases/shared/tracing"
+	"github.com/joho/godotenv"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
-	"github.com/opentracing/opentracing-go/log"
+	openlog "github.com/opentracing/opentracing-go/log"
 	"html/template"
+	"log"
 	"net/http"
 	"os"
 )
 
-func main() {
-	jaegerUrl := os.Getenv("JAEGER_AGENT_HOST")
-	jaegerPort :=  os.Getenv("JAEGER_AGENT_PORT")
-	jaegerConfig := jaegerUrl + ":" + jaegerPort
-	println(jaegerConfig)
 
-	tracer, closer := tracing.Init("ProxyApi", jaegerConfig)
-	defer closer.Close()
-	opentracing.SetGlobalTracer(tracer)
+var (
+	DocumentUrl = "localhost:3210"
+)
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "3201"
-	}
+var (
+	KeyvalueUrl = "localhost:3230"
+)
 
-	span := tracer.StartSpan("StartingProxyApi")
-	span.SetTag("event", "Starting MUX")
-	defer span.Finish()
+var (
+	OauthUrl = "localhost:3240"
+)
 
-	ctx := context.Background()
-	ctx = opentracing.ContextWithSpan(ctx, span)
-
-	logValue := fmt.Sprintf("Starting server on port %s", port)
-	tracing.PrintServerInfo(ctx, logValue)
-	span.Finish()
-
-	fs := http.FileServer(http.Dir("proxy/static"))
-	http.Handle("/static/", http.StripPrefix("/static/", fs))
-	http.HandleFunc("/", HomePage)
-	http.HandleFunc("/queryWordCount", QueryWordCount)
-	http.ListenAndServe(":3201", nil)
-}
+var (
+	GraphUrl =  "localhost:3220"
+)
 
 func render(w http.ResponseWriter, tmpl string) {
 	tmpl = fmt.Sprintf("proxy/templates/%s", tmpl) // prefix the name passed in with templates/
@@ -76,11 +62,11 @@ func QueryWordCount(w http.ResponseWriter, req *http.Request)  {
 	token := GetToken(ctx, req)
 
 	span.LogFields(
-		log.String("event", "retrieved a token"),
-		log.String("value", token),
+		openlog.String("event", "retrieved a token"),
+		openlog.String("value", token),
 	)
 
-	url := "http://localhost:3230/api/v1/keyvalue/inferno/cantoi/1"
+	url := fmt.Sprintf("http://%s/api/v1/keyvalue/inferno/cantoi/1", KeyvalueUrl)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		panic(err.Error())
@@ -102,8 +88,8 @@ func QueryWordCount(w http.ResponseWriter, req *http.Request)  {
 
 	helloStr := string(resp)
 	span.LogFields(
-		log.String("event", "calling backend"),
-		log.String("value", helloStr),
+		openlog.String("event", "calling backend"),
+		openlog.String("value", helloStr),
 	)
 
 	response.RespondWithJson(w, 200, helloStr, ctx)
@@ -112,7 +98,7 @@ func QueryWordCount(w http.ResponseWriter, req *http.Request)  {
 
 func GetToken(ctx context.Context, req *http.Request) string {
 	span, _ := opentracing.StartSpanFromContext(ctx, "getToken")
-	tokenUrl := "http://localhost:3240/token?grant_type=client_credentials&client_id=000000&client_secret=999999&scope=read"
+	tokenUrl := fmt.Sprintf("http://%s/token?grant_type=client_credentials&client_id=000000&client_secret=999999&scope=read", OauthUrl)
 	req, err := http.NewRequest("GET", tokenUrl, nil)
 	if err != nil {
 		panic(err.Error())
@@ -134,9 +120,64 @@ func GetToken(ctx context.Context, req *http.Request) string {
 
 	tokenString := string(respToken)
 	span.LogFields(
-		log.String("event", "calling oauth server"),
-		log.String("value", tokenString),
+		openlog.String("event", "calling oauth server"),
+		openlog.String("value", tokenString),
 	)
 	return tokenString
+}
+
+func init() {
+	systemEnv := os.Getenv("GOENV")
+	err := godotenv.Load(".env." + systemEnv)
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	println(os.Getenv("DOCUMENT_URL"))
+
+	DocumentUrl = os.Getenv("DOCUMENT_URL")
+	KeyvalueUrl = os.Getenv("KEYVALUE_URL")
+	OauthUrl = os.Getenv("OAUTH_URL")
+	GraphUrl = os.Getenv("GRAPH_URL")
+
+	println(DocumentUrl)
+	println(KeyvalueUrl)
+	println(OauthUrl)
+	println(GraphUrl)
+}
+
+func main() {
+	jaegerUrl := os.Getenv("JAEGER_AGENT_HOST")
+	jaegerPort :=  os.Getenv("JAEGER_AGENT_PORT")
+	jaegerConfig := jaegerUrl + ":" + jaegerPort
+	println(jaegerConfig)
+
+	tracer, closer := tracing.Init("ProxyApi", jaegerConfig)
+	defer closer.Close()
+	opentracing.SetGlobalTracer(tracer)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3201"
+	}
+
+	span := tracer.StartSpan("StartingProxyApi")
+	span.SetTag("event", "Starting MUX")
+	defer span.Finish()
+
+	ctx := context.Background()
+	ctx = opentracing.ContextWithSpan(ctx, span)
+
+	logValue := fmt.Sprintf("Starting server on port %s", port)
+	tracing.PrintServerInfo(ctx, logValue)
+	span.Finish()
+
+	fs := http.FileServer(http.Dir("proxy/static"))
+	mux := http.NewServeMux()
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+	mux.HandleFunc("/", HomePage)
+	mux.HandleFunc("/queryWordCount", QueryWordCount)
+	panic(http.ListenAndServe(":3201", mux))
+
 }
 

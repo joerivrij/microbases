@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/joho/godotenv"
 	"github.com/opentracing/opentracing-go"
 	openlog "github.com/opentracing/opentracing-go/log"
 	"github.com/uber/jaeger-client-go"
 	"github.com/uber/jaeger-client-go/config"
+	"github.com/joerivrij/microbases/shared/tracing"
 	"io"
 	"log"
 	"net/http"
@@ -363,13 +365,26 @@ func graphHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func init() {
+	systemEnv := os.Getenv("GOENV")
+	println(systemEnv)
+
+	err := godotenv.Load(".env." + systemEnv)
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
 	if os.Getenv("NEO4J_URL") != "" {
 		neo4jURL = os.Getenv("NEO4J_URL")
 	}
 }
 
 func main() {
-	tracer, closer := initJaeger("GraphBackendApi")
+	jaegerUrl := os.Getenv("JAEGER_AGENT_HOST")
+	jaegerPort :=  os.Getenv("JAEGER_AGENT_PORT")
+	jaegerConfig := jaegerUrl + ":" + jaegerPort
+	println(jaegerConfig)
+
+	tracer, closer := tracing.Init("GraphBackendApi", jaegerConfig)
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
 
