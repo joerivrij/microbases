@@ -16,7 +16,6 @@ func Init(service string, host string) (opentracing.Tracer, io.Closer) {
 //		// parsing errors might happen here, such as when we get a string where we expect a number
 //		log.Printf("Could not parse Jaeger env vars: %s", err.Error())
 //	}
-	println(host)
 	cfg := &config.Configuration{
 		Sampler: &config.SamplerConfig{
 			Type:  "const",
@@ -24,10 +23,10 @@ func Init(service string, host string) (opentracing.Tracer, io.Closer) {
 		},
 		Reporter: &config.ReporterConfig{
 			LogSpans: true,
-			//LocalAgentHostPort: host,
+			LocalAgentHostPort: host,
 		},
 	}
-
+	println(cfg)
 
 	tracer, closer, err := cfg.New(service, config.Logger(jaeger.StdLogger))
 	if err != nil {

@@ -9,7 +9,8 @@ services:
     build: ../document/
     environment:
       - GOENV=docker
-      - JAEGER_HOST=jaeger-agent
+      - JAEGER_AGENT_HOST=jaeger-agent
+      - JAEGER_AGENT_PORT=6831
     ports:
     - 3210:3210
 

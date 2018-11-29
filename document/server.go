@@ -52,9 +52,12 @@ func main() {
 
 	Connect(mongoUrl)
 
-	jaegerUrl := os.Getenv("JAEGER_HOST")
+	jaegerUrl := os.Getenv("JAEGER_AGENT_HOST")
+	jaegerPort :=  os.Getenv("JAEGER_AGENT_PORT")
+	jaegerConfig := jaegerUrl + ":" + jaegerPort
+	println(jaegerConfig)
 
-	tracer, closer := tracing.Init("DocumentBackendApi", jaegerUrl)
+	tracer, closer := tracing.Init("DocumentBackendApi", jaegerConfig)
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
 
