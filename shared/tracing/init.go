@@ -23,10 +23,11 @@ func Init(service string, host string) (opentracing.Tracer, io.Closer) {
 			Param: 1,
 		},
 		Reporter: &config.ReporterConfig{
-			//LocalAgentHostPort: host,
 			LogSpans: true,
+			//LocalAgentHostPort: host,
 		},
 	}
+
 
 	tracer, closer, err := cfg.New(service, config.Logger(jaeger.StdLogger))
 	if err != nil {

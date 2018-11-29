@@ -53,7 +53,6 @@ func main() {
 	Connect(mongoUrl)
 
 	jaegerUrl := os.Getenv("JAEGER_HOST")
-	println(jaegerUrl)
 
 	tracer, closer := tracing.Init("DocumentBackendApi", jaegerUrl)
 	defer closer.Close()
