@@ -27,7 +27,12 @@ type PostBody struct {
 }
 
 func main() {
-	tracer, closer := tracing.Init("KeyValueBackendApi")
+	jaegerUrl := os.Getenv("JAEGER_AGENT_HOST")
+	jaegerPort :=  os.Getenv("JAEGER_AGENT_PORT")
+	jaegerConfig := jaegerUrl + ":" + jaegerPort
+	println(jaegerConfig)
+
+	tracer, closer := tracing.Init("KeyValueBackendApi", jaegerConfig)
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
 

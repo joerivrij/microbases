@@ -19,7 +19,13 @@ import (
 )
 
 func main() {
-	tracer, closer := tracing.Init("OauthServer")
+
+	jaegerUrl := os.Getenv("JAEGER_AGENT_HOST")
+	jaegerPort :=  os.Getenv("JAEGER_AGENT_PORT")
+	jaegerConfig := jaegerUrl + ":" + jaegerPort
+	println(jaegerConfig)
+
+	tracer, closer := tracing.Init("OauthServer", jaegerConfig)
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
 

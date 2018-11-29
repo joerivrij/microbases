@@ -12,6 +12,7 @@ RUN go build -o keyvalueserver .
 FROM alpine
 RUN apk update && apk add git && apk add ca-certificates
 COPY --from=builder /go/src/app/keyvalueserver /
+COPY --from=builder /go/src/app/.env.docker /
 CMD ["/keyvalueserver"]
 
 
