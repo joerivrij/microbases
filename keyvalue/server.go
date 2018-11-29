@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	microclient "github.com/joerivrij/microbases/shared/client"
 	"fmt"
 	"github.com/gorilla/mux"
+	"github.com/joerivrij/microbases/shared/models"
 	"github.com/joerivrij/microbases/shared/tracing"
 	"github.com/joho/godotenv"
 	"github.com/mediocregopher/radix.v2/pool"
@@ -19,6 +21,14 @@ import (
 )
 
 var db *pool.Pool
+
+var (
+	RedisUrl = "localhost:6379"
+)
+
+var (
+	DocumentUrl = "localhost:3210"
+)
 
 type PostBody struct {
 	Words  string `json:"words"`
@@ -36,8 +46,10 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
+	DocumentUrl = os.Getenv("DOCUMENT_URL")
 	RedisUrl := os.Getenv("REDIS_URL")
 	println(RedisUrl)
+	println(DocumentUrl)
 
 	tracer, closer := tracing.Init("KeyValueBackendApi", jaegerConfig)
 	defer closer.Close()
@@ -56,7 +68,7 @@ func main() {
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	logValue := fmt.Sprintf("Starting server on port %s with redis %s", port, RedisUrl)
-	printServerInfo(ctx, logValue)
+	tracing.PrintServerInfo(ctx, logValue)
 	span.Finish()
 
 	startRedis()
@@ -103,7 +115,13 @@ func searchHandler(w http.ResponseWriter, req *http.Request) {
 
 	exists := keyExists(key, ctx)
 	if !exists{
-		respondWithJson(w, 503, "not done yet", ctx)
+		//todo create key as placeholder
+		resp := getWordCountFromMongo(key, w, req, ctx)
+
+		words := strings.Fields(resp.TextItalian)
+		for _, word := range words{
+			incrWordCount(key, word, ctx)
+		}
 	}
 
 	c := getWordCount(key, ctx)
@@ -165,8 +183,40 @@ func keyExists(key string, ctx context.Context) (bool) {
 	return exists
 }
 
-func getWordCountFromMongo(key string, ctx context.Context) {
+func getWordCountFromMongo(key string, w http.ResponseWriter, req *http.Request, ctx context.Context) models.Canto {
+	span, _ := opentracing.StartSpanFromContext(ctx, "getWordCountFromMongo")
+	var canto models.Canto
 
+	url := fmt.Sprintf("http://%s/api/inferno/1/1", DocumentUrl)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	ext.SpanKindRPCClient.Set(span)
+	ext.HTTPUrl.Set(span, url)
+	ext.HTTPMethod.Set(span, "GET")
+	span.Tracer().Inject(
+		span.Context(),
+		opentracing.HTTPHeaders,
+		opentracing.HTTPHeadersCarrier(req.Header),
+	)
+
+	resp, err := microclient.BackendCall(req)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	response := string(resp)
+	span.LogFields(
+		openlog.String("event", "Calling documentbase"),
+		openlog.String("value", response),
+	)
+
+	if err := json.Unmarshal(resp, &canto); err != nil {
+		panic(err)
+	}
+	return canto
 }
 
 func delWordCount(key string, ctx context.Context) {
@@ -218,13 +268,6 @@ func getWordCount(key string, ctx context.Context) (map[string] string) {
 		openlog.String("body", "Increased by 1"),
 	)
 	return result
-}
-
-func printServerInfo(ctx context.Context, serverInfo string){
-	span, _ := opentracing.StartSpanFromContext(ctx, "ServerInfo")
-	defer span.Finish()
-
-	span.LogKV("event", serverInfo)
 }
 
 //generic method to respondwith json and log to jaeger

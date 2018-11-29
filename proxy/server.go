@@ -34,7 +34,8 @@ var (
 )
 
 func render(w http.ResponseWriter, tmpl string) {
-	tmpl = fmt.Sprintf("proxy/templates/%s", tmpl) // prefix the name passed in with templates/
+	templateDir := os.Getenv("STATIC_CONTENT_DIR")
+	tmpl = fmt.Sprintf(templateDir + "templates/%s", tmpl) // prefix the name passed in with templates/
 	t, err := template.ParseFiles(tmpl)      //parse the template file held in the templates folder
 
 	if err != nil {
@@ -133,8 +134,6 @@ func init() {
 		log.Fatal("Error loading .env file")
 	}
 
-	println(os.Getenv("DOCUMENT_URL"))
-
 	DocumentUrl = os.Getenv("DOCUMENT_URL")
 	KeyvalueUrl = os.Getenv("KEYVALUE_URL")
 	OauthUrl = os.Getenv("OAUTH_URL")
@@ -172,7 +171,8 @@ func main() {
 	tracing.PrintServerInfo(ctx, logValue)
 	span.Finish()
 
-	fs := http.FileServer(http.Dir("proxy/static"))
+	staticDir := os.Getenv("STATIC_CONTENT_DIR")
+	fs := http.FileServer(http.Dir(staticDir + "static"))
 	mux := http.NewServeMux()
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 	mux.HandleFunc("/", HomePage)
